@@ -1,0 +1,2478 @@
+# 后台接口项目构建流程文档（通用版）
+
+## 1. 概述
+
+本流程用于快速构建基于 Spring Boot 的接口项目。**只需接口文档，按照以下步骤即可生成完整可落地的项目。**
+
+### 1.1 项目类型分类
+
+根据业务需求，接口项目分为以下几类：
+
+| 项目类型 | 说明 | 示例场景 | 特殊依赖 |
+|---------|------|---------|---------|
+| **数据同步型** | 接收数据并存储到本地数据库 | 接收第三方推送数据 | 无 |
+| **第三方调用型** | 调用第三方平台API | 调用政务/医疗/支付平台 | OkHttp、加密库 |
+| **定时任务型** | 定时执行数据同步或清理 | 每日数据对账、日志清理 | 需 ScheduleConfig |
+| **混合型** | 包含以上多种功能 | 综合业务对接 | 根据功能组合 |
+
+### 1.2 技术栈选型
+
+| 技术 | 版本 | 说明 |
+|------|------|------|
+| **JDK** | 1.8+ | 推荐使用 JDK 8 或 11 |
+| **Spring Boot** | 2.7.18 | LTS 稳定版本，兼容性强 |
+| **MyBatis Plus** | 3.5.5 | 增强版 ORM 框架，简化 CRUD |
+| **MySQL** | 8.0+ | 默认数据库，可替换为其他数据库 |
+| **HikariCP** | 内置 | 高性能连接池 |
+| **OkHttp** | 3.14.9 | HTTP 客户端，用于调用第三方 API |
+| **Lombok** | 最新稳定版 | 减少样板代码 |
+| **SLF4J + Logback** | 内置 | 日志框架 |
+
+### 1.3 开发规范参考
+
+本项目遵循以下业界标准：
+
+- **阿里巴巴 Java 开发手册**
+- **Spring Boot 最佳实践**
+- **RESTful API 设计规范**
+- **MyBatis Plus 使用规范**
+
+为项目代码增加可读性和可维护性，需要为所有 Java 类和方法添加规范的中文注释：
+
+- 为所有 Java 类添加类级别的中文注释说明
+- 为所有 public 方法添加方法级别的中文注释说明
+- 为重要字段添加中文注释说明
+- 遵循 JavaDoc 注释规范
+
+***
+
+## 2. 项目初始化
+
+### 2.1 创建 Spring Boot 项目
+
+推荐使用 Spring Initializr 创建项目：
+
+- 访问 https://start.spring.io/
+- 选择 Maven 项目，JDK 8
+- 添加依赖：Spring Web、Validation、MySQL Driver、Lombok
+
+或使用 IDE（IntelliJ IDEA / Eclipse）内置的 Spring Initializr 向导创建。
+
+### 2.2 项目命名规范
+
+| 项目 | 命名规则 | 示例 |
+|------|---------|------|
+| 项目名称 | api-业务标识 | api-order |
+| 包名 | com.example.业务标识 | com.example.order |
+| 数据库表名 | t_业务标识+后缀 | t_order（主表）、t_order_item（明细表） |
+| 类名 | 大驼峰命名法 | OrderController |
+| 方法名 | 小驼峰命名法 | syncOrder |
+| 常量名 | 全大写+下划线 | MAX_RETRY_COUNT |
+| 接口路径 | 小写+连字符 | /api/v1/order-items |
+
+***
+
+## 2.3 开发前确认清单
+
+**重要**：在开始编写代码前，必须先确认以下事项，避免后期返工！
+
+### 2.3.1 接口类型确认
+
+根据接口文档，确认接口类型：
+
+| 接口类型 | 说明 | 实现方式 | 配置要求 |
+|---------|------|---------|---------|
+| **我方实现的接口** | 接收外部系统调用 | 开发 Controller 提供 API 端点 | 无特殊配置 |
+| **我方调用的接口** | 调用第三方平台 API | 开发 ApiClient 调用第三方 | 需要 OkHttp 依赖 |
+| **前端调用的接口** | 供前端页面调用 | 开发 Controller 提供 API | 考虑跨域和鉴权 |
+| **定时任务调用的接口** | 后台定时执行 | 开发 Task 定时任务 | 需要 ScheduleConfig |
+
+**确认步骤**：
+1. 阅读接口文档，标注每个接口的类型
+2. 确认是否需要开发 Controller
+3. 确认是否需要开发 ApiClient
+4. 确认是否需要配置定时任务
+
+### 2.3.2 数据库表结构设计决策
+
+确认是否需要存储数据：
+
+| 决策项 | 说明 | 操作 |
+|--------|------|------|
+| **是否需要新建数据库表** | 是否需要存储业务数据 | 如需要，创建 sql 目录和建表脚本 |
+| **是否需要编写 SQL 脚本** | 是否需要初始化数据 | 如需要，创建 insert 脚本 |
+| **表结构设计** | 主表/明细表设计 | 根据接口文档设计表结构 |
+| **索引设计** | 根据查询条件创建索引 | 提升查询性能 |
+| **审计字段设计** | 是否需要审计字段 | 建议包含：创建时间、更新时间、操作人等 |
+
+**决策步骤**：
+1. 分析接口文档，确定需要存储的数据
+2. 设计表结构（参考第5章数据库设计）
+3. 创建 SQL 脚本文件
+
+### 2.3.3 其他需要确认的事项
+
+| 确认项 | 说明 | 示例 |
+|--------|------|------|
+| **加密方式** | 数据传输是否需要加密 | SM2 国密算法、AES、RSA、不加密 |
+| **数据格式** | 接口接收的数据格式 | XML、JSON、DTO 对象 |
+| **签名验证** | 是否需要签名验证 | HMAC-SHA256、MD5 签名 |
+| **Token 管理** | 是否需要 Token 认证 | OAuth2、JWT、API Key |
+| **Mock 模式** | 是否需要 Mock 测试数据 | 本地开发测试用 |
+
+**确认步骤**：
+1. 阅读接口文档的技术规范章节
+2. 确认加密算法和签名方式
+3. 确认数据格式和编码方式
+4. 确认是否需要 Token 管理
+
+### 2.3.4 开发前确认检查清单
+
+在开始开发前，请确认以下检查清单：
+
+- [ ] 已确认接口类型（我方实现/我方调用/前端调用/定时任务）
+- [ ] 已确认是否需要新建数据库表
+- [ ] 已确认是否需要编写 SQL 脚本
+- [ ] 已确认加密方式（SM2/AES/RSA/不加密）
+- [ ] 已确认数据格式（XML/JSON/DTO）
+- [ ] 已确认认证方式（Token/API Key/无认证）
+- [ ] 已阅读接口文档的技术规范章节
+- [ ] 已了解接口的调用流程和数据结构
+
+**注意**：以上确认事项必须在实际开发前完成，避免后期返工！
+
+***
+
+## 3. pom.xml 配置
+
+### 3.1 基础配置（所有项目通用）
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>2.7.18</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>com.example</groupId>
+    <artifactId>api-xxx</artifactId>
+    <version>1.0.0</version>
+    <packaging>jar</packaging>
+    <name>api-xxx</name>
+    <description>XXX 接口服务</description>
+
+    <properties>
+        <java.version>1.8</java.version>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <mybatis-plus.version>3.5.5</mybatis-plus.version>
+        <okhttp.version>3.14.9</okhttp.version>
+        <hutool.version>5.8.25</hutool.version>
+    </properties>
+
+    <dependencies>
+        <!-- Spring Boot Web -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <!-- Spring Boot Validation（参数校验 JSR-380） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+
+        <!-- MyBatis Plus -->
+        <dependency>
+            <groupId>com.baomidou</groupId>
+            <artifactId>mybatis-plus-boot-starter</artifactId>
+            <version>${mybatis-plus.version}</version>
+        </dependency>
+
+        <!-- MySQL 驱动 -->
+        <dependency>
+            <groupId>com.mysql</groupId>
+            <artifactId>mysql-connector-j</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!-- Lombok -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <!-- Hutool 工具库 -->
+        <dependency>
+            <groupId>cn.hutool</groupId>
+            <artifactId>hutool-all</artifactId>
+            <version>${hutool.version}</version>
+        </dependency>
+
+        <!-- Jackson（Spring Boot 已内置，此处显式声明确保版本一致） -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.datatype</groupId>
+            <artifactId>jackson-datatype-jsr310</artifactId>
+        </dependency>
+
+        <!-- Spring Boot Test -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <finalName>api-xxx</finalName>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <excludes>
+                        <exclude>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                        </exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>
+```
+
+### 3.2 第三方调用型项目额外依赖
+
+```xml
+<!-- OkHttp：HTTP 客户端（用于调用第三方 API） -->
+<dependency>
+    <groupId>com.squareup.okhttp3</groupId>
+    <artifactId>okhttp</artifactId>
+    <version>${okhttp.version}</version>
+</dependency>
+
+<!-- Bouncy Castle：加密库（用于 SM2 等国密算法） -->
+<dependency>
+    <groupId>org.bouncycastle</groupId>
+    <artifactId>bcpkix-jdk15on</artifactId>
+    <version>1.70</version>
+</dependency>
+<dependency>
+    <groupId>org.bouncycastle</groupId>
+    <artifactId>bcprov-jdk15on</artifactId>
+    <version>1.70</version>
+</dependency>
+```
+
+### 3.3 关键配置说明
+
+| 配置项 | 说明 | 最佳实践 |
+|--------|------|---------|
+| **spring-boot-starter-parent** | 继承 Spring Boot 父 POM | 简化版本管理，统一依赖版本 |
+| **mybatis-plus-boot-starter** | MyBatis Plus 启动器 | 不需要再引入 mybatis-spring-boot-starter |
+| **spring-boot-starter-validation** | 参数校验 | 使用 JSR-380 注解校验参数 |
+| **hutool-all** | Java 工具库 | 替代 Apache Commons，功能更全面 |
+| **lombok** | 减少样板代码 | 需要 IDE 安装 Lombok 插件 |
+| **packaging=jar** | 打包为 JAR | Spring Boot 内置 Tomcat，直接运行 |
+| **spring-boot-maven-plugin** | 打包插件 | 生成可执行 JAR |
+
+***
+
+## 4. 项目目录结构
+
+```
+api-xxx/
+├── pom.xml                              # Maven 配置文件
+├── sql/                                 # 数据库脚本目录
+│   ├── create_table.sql                 # 建表 SQL
+│   └── init_data.sql                    # 初始化数据 SQL（可选）
+├── src/main/java/com/example/xxx/       # Java 源码目录
+│   ├── ApiXxxApplication.java           # Spring Boot 启动类
+│   ├── common/                          # 公共模块
+│   │   ├── result/                      # 统一响应
+│   │   │   ├── Result.java              # 统一响应封装
+│   │   │   └── ResultCode.java          # 响应状态码枚举
+│   │   ├── exception/                   # 异常定义
+│   │   │   ├── BusinessException.java   # 业务异常
+│   │   │   └── GlobalExceptionHandler.java # 全局异常处理器
+│   │   └── context/                     # 上下文管理
+│   │       └── UserContext.java         # 用户上下文（ThreadLocal）
+│   ├── config/                          # 配置类
+│   │   ├── MybatisPlusConfig.java       # MyBatis Plus 配置
+│   │   ├── JacksonConfig.java           # JSON 配置
+│   │   ├── WebMvcConfig.java            # Web 配置
+│   │   ├── ScheduleConfig.java          # 定时任务配置（可选）
+│   │   └── CorsConfig.java             # 跨域配置（可选）
+│   ├── controller/                      # 控制器层
+│   │   └── XxxController.java           # RESTful API 控制器
+│   ├── mapper/                          # MyBatis Mapper 接口
+│   │   ├── XxxMapper.java               # 主表 Mapper
+│   │   └── XxxDetailMapper.java         # 明细表 Mapper
+│   ├── model/                           # 实体类
+│   │   ├── entity/                      # 数据库实体（PO）
+│   │   │   ├── Xxx.java                 # 主表实体
+│   │   │   └── XxxDetail.java           # 明细表实体
+│   │   ├── dto/                         # 数据传输对象（DTO）
+│   │   │   └── XxxSyncRequest.java      # 同步请求 DTO
+│   │   └── vo/                          # 视图对象（VO）
+│   │       └── XxxSyncResponse.java     # 同步响应 VO
+│   ├── service/                         # 业务逻辑层
+│   │   ├── XxxService.java              # 业务服务
+│   │   ├── XxxApiClient.java            # 第三方 API 客户端（可选）
+│   │   ├── XxxConfig.java               # 第三方配置（可选）
+│   │   └── XxxMockService.java          # Mock 服务（可选）
+│   ├── task/                            # 定时任务（可选）
+│   │   └── XxxSyncTask.java             # 数据同步任务
+│   └── util/                            # 工具类
+│       ├── OkHttpUtils.java             # HTTP 工具（可选）
+│       └── SM2Encryptor.java            # 加密工具（可选）
+├── src/main/resources/                  # 资源文件目录
+│   ├── application.yml                  # 主配置文件
+│   ├── application-dev.yml              # 开发环境配置
+│   ├── application-prod.yml             # 生产环境配置
+│   └── mapper/                          # MyBatis XML 映射文件（可选）
+│       └── XxxMapper.xml
+└── src/test/java/                       # 测试代码目录
+    └── com/example/xxx/
+        └── XxxServiceTest.java
+```
+
+***
+
+## 5. 数据库设计
+
+### 5.1 主表设计规范
+
+```sql
+-- 创建数据库
+CREATE DATABASE IF NOT EXISTS biz_db DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
+USE biz_db;
+
+-- 创建主表
+CREATE TABLE t_xxx (
+    -- 主键：自增 ID
+    id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
+
+    -- 业务主键：唯一标识（必填）
+    biz_id VARCHAR(50) UNIQUE NOT NULL COMMENT '业务ID',
+
+    -- 业务字段（根据接口文档定义）
+    field1 VARCHAR(100) COMMENT '业务字段1',
+    field2 INT COMMENT '业务字段2',
+
+    -- 审计字段（必须）
+    original_json TEXT COMMENT '原始JSON入参（用于问题排查）',
+    status VARCHAR(20) NOT NULL DEFAULT 'SYNCED' COMMENT '状态：SYNCED-已同步/FAILED-同步失败',
+    create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    create_by VARCHAR(50) COMMENT '创建人',
+    update_by VARCHAR(50) COMMENT '更新人',
+    deleted TINYINT NOT NULL DEFAULT 0 COMMENT '逻辑删除：0-未删除，1-已删除'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='XXX信息表';
+
+-- 创建索引（提升查询性能）
+CREATE INDEX idx_t_xxx_biz_id ON t_xxx(biz_id);
+CREATE INDEX idx_t_xxx_status ON t_xxx(status);
+CREATE INDEX idx_t_xxx_create_time ON t_xxx(create_time);
+```
+
+### 5.2 明细表设计规范
+
+```sql
+-- 创建明细表
+CREATE TABLE t_xxx_detail (
+    -- 主键：自增 ID
+    id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
+
+    -- 外键：关联主表业务主键
+    biz_id VARCHAR(50) NOT NULL COMMENT '关联主表业务ID',
+
+    -- 明细字段（根据接口文档定义）
+    detail_field1 VARCHAR(100) COMMENT '明细字段1',
+
+    -- 审计字段
+    create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    deleted TINYINT NOT NULL DEFAULT 0 COMMENT '逻辑删除：0-未删除，1-已删除',
+
+    -- 外键索引
+    INDEX idx_t_xxx_detail_biz_id (biz_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='XXX明细表';
+```
+
+### 5.3 数据库设计最佳实践
+
+| 设计要点 | 说明 | 最佳实践 |
+|---------|------|---------|
+| **主键设计** | 使用自增 BIGINT | 避免业务字段作为主键 |
+| **业务主键** | 添加唯一索引 | 保证数据唯一性 |
+| **审计字段** | 必须包含 create_time/update_time | 用于数据追溯和问题排查 |
+| **字段类型** | 优先使用 VARCHAR/TEXT | MySQL 中 VARCHAR 支持中文 |
+| **索引设计** | 根据查询条件创建 | 避免过度索引影响写入性能 |
+| **默认值** | 设置合理的默认值 | 减少应用层处理逻辑 |
+| **逻辑删除** | 使用 deleted 字段 | 避免物理删除导致数据丢失 |
+| **字符集** | 使用 utf8mb4 | 支持完整的 Unicode 字符（含 Emoji） |
+| **注释** | 每个字段添加 COMMENT | 便于维护和理解 |
+
+***
+
+## 6. 公共模块开发
+
+### 6.1 统一响应封装 Result.java
+
+```java
+package com.example.xxx.common.result;
+
+import lombok.Data;
+import java.io.Serializable;
+
+/**
+ * 统一响应封装
+ *
+ * <p>所有接口统一使用此格式返回，保持一致性</p>
+ *
+ * @author developer
+ */
+@Data
+public class Result<T> implements Serializable {
+
+    private static final long serialVersionUID = 1L;
+
+    /** 状态码 */
+    private int code;
+
+    /** 提示信息 */
+    private String message;
+
+    /** 响应数据 */
+    private T data;
+
+    /** 时间戳 */
+    private long timestamp;
+
+    public Result() {
+        this.timestamp = System.currentTimeMillis();
+    }
+
+    public Result(int code, String message, T data) {
+        this.code = code;
+        this.message = message;
+        this.data = data;
+        this.timestamp = System.currentTimeMillis();
+    }
+
+    /**
+     * 成功响应（带数据）
+     */
+    public static <T> Result<T> success(T data) {
+        return new Result<>(ResultCode.SUCCESS.getCode(), ResultCode.SUCCESS.getMessage(), data);
+    }
+
+    /**
+     * 成功响应（无数据）
+     */
+    public static <T> Result<T> success() {
+        return new Result<>(ResultCode.SUCCESS.getCode(), ResultCode.SUCCESS.getMessage(), null);
+    }
+
+    /**
+     * 成功响应（自定义消息）
+     */
+    public static <T> Result<T> success(String message, T data) {
+        return new Result<>(ResultCode.SUCCESS.getCode(), message, data);
+    }
+
+    /**
+     * 失败响应
+     */
+    public static <T> Result<T> fail(String message) {
+        return new Result<>(ResultCode.FAIL.getCode(), message, null);
+    }
+
+    /**
+     * 失败响应（自定义状态码）
+     */
+    public static <T> Result<T> fail(int code, String message) {
+        return new Result<>(code, message, null);
+    }
+
+    /**
+     * 失败响应（使用 ResultCode 枚举）
+     */
+    public static <T> Result<T> fail(ResultCode resultCode) {
+        return new Result<>(resultCode.getCode(), resultCode.getMessage(), null);
+    }
+}
+```
+
+### 6.2 响应状态码枚举 ResultCode.java
+
+```java
+package com.example.xxx.common.result;
+
+import lombok.Getter;
+
+/**
+ * 响应状态码枚举
+ *
+ * <p>定义常用的 HTTP 响应状态码和业务状态码</p>
+ *
+ * @author developer
+ */
+@Getter
+public enum ResultCode {
+
+    SUCCESS(200, "操作成功"),
+    FAIL(500, "操作失败"),
+    BAD_REQUEST(400, "请求参数错误"),
+    UNAUTHORIZED(401, "未授权"),
+    FORBIDDEN(403, "禁止访问"),
+    NOT_FOUND(404, "资源不存在"),
+    METHOD_NOT_ALLOWED(405, "请求方法不允许"),
+    CONFLICT(409, "数据冲突"),
+    TOO_MANY_REQUESTS(429, "请求过于频繁"),
+    INTERNAL_ERROR(500, "服务器内部错误"),
+    SERVICE_UNAVAILABLE(503, "服务不可用"),
+
+    PARAM_VALID_ERROR(1001, "参数校验失败"),
+    DATA_NOT_FOUND(1002, "数据不存在"),
+    DATA_DUPLICATE(1003, "数据已存在"),
+    BUSINESS_ERROR(2001, "业务处理异常");
+
+    private final int code;
+    private final String message;
+
+    ResultCode(int code, String message) {
+        this.code = code;
+        this.message = message;
+    }
+}
+```
+
+### 6.3 业务异常 BusinessException.java
+
+```java
+package com.example.xxx.common.exception;
+
+import com.example.xxx.common.result.ResultCode;
+import lombok.Getter;
+
+/**
+ * 业务异常
+ *
+ * <p>用于在业务逻辑中抛出可预期的异常，由全局异常处理器统一捕获</p>
+ *
+ * @author developer
+ */
+@Getter
+public class BusinessException extends RuntimeException {
+
+    private final int code;
+
+    public BusinessException(String message) {
+        super(message);
+        this.code = ResultCode.BUSINESS_ERROR.getCode();
+    }
+
+    public BusinessException(int code, String message) {
+        super(message);
+        this.code = code;
+    }
+
+    public BusinessException(ResultCode resultCode) {
+        super(resultCode.getMessage());
+        this.code = resultCode.getCode();
+    }
+}
+```
+
+### 6.4 全局异常处理器 GlobalExceptionHandler.java
+
+```java
+package com.example.xxx.common.exception;
+
+import com.example.xxx.common.result.Result;
+import com.example.xxx.common.result.ResultCode;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
+import org.springframework.validation.FieldError;
+import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.ResponseStatus;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.servlet.NoHandlerFoundException;
+import javax.validation.ConstraintViolation;
+import javax.validation.ConstraintViolationException;
+import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+/**
+ * 全局异常处理器
+ *
+ * <p>统一处理 Controller 层抛出的异常，避免 try-catch 满天飞</p>
+ *
+ * @author developer
+ */
+@RestControllerAdvice
+public class GlobalExceptionHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
+    /**
+     * 处理业务异常
+     */
+    @ExceptionHandler(BusinessException.class)
+    @ResponseStatus(HttpStatus.OK)
+    public Result<Void> handleBusinessException(BusinessException e) {
+        log.warn("业务异常: {}", e.getMessage());
+        return Result.fail(e.getCode(), e.getMessage());
+    }
+
+    /**
+     * 处理参数校验异常（@RequestBody）
+     */
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public Result<Void> handleValidationException(MethodArgumentNotValidException e) {
+        List<FieldError> fieldErrors = e.getBindingResult().getFieldErrors();
+        String message = fieldErrors.stream()
+                .map(error -> error.getField() + ": " + error.getDefaultMessage())
+                .collect(Collectors.joining("; "));
+        log.warn("参数校验失败: {}", message);
+        return Result.fail(ResultCode.PARAM_VALID_ERROR.getCode(), message);
+    }
+
+    /**
+     * 处理参数校验异常（@RequestParam / @PathVariable）
+     */
+    @ExceptionHandler(ConstraintViolationException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public Result<Void> handleConstraintViolationException(ConstraintViolationException e) {
+        Set<ConstraintViolation<?>> violations = e.getConstraintViolations();
+        String message = violations.stream()
+                .map(ConstraintViolation::getMessage)
+                .collect(Collectors.joining("; "));
+        log.warn("参数校验失败: {}", message);
+        return Result.fail(ResultCode.PARAM_VALID_ERROR.getCode(), message);
+    }
+
+    /**
+     * 处理 404 异常
+     */
+    @ExceptionHandler(NoHandlerFoundException.class)
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    public Result<Void> handleNotFoundException(NoHandlerFoundException e) {
+        return Result.fail(ResultCode.NOT_FOUND);
+    }
+
+    /**
+     * 处理其他未知异常
+     */
+    @ExceptionHandler(Exception.class)
+    @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
+    public Result<Void> handleException(Exception e) {
+        log.error("系统异常: ", e);
+        return Result.fail(ResultCode.INTERNAL_ERROR.getCode(), "系统繁忙，请稍后重试");
+    }
+}
+```
+
+### 6.5 用户上下文 UserContext.java
+
+```java
+package com.example.xxx.common.context;
+
+import lombok.Data;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import java.io.Serializable;
+
+/**
+ * 用户上下文管理器
+ *
+ * <p>使用 ThreadLocal 存储当前请求的用户信息，保证线程安全</p>
+ *
+ * @author developer
+ */
+public class UserContext {
+
+    private static final Logger log = LoggerFactory.getLogger(UserContext.class);
+
+    private static final ThreadLocal<UserInfo> USER_THREAD_LOCAL = new ThreadLocal<>();
+
+    /**
+     * 设置当前用户信息
+     *
+     * @param userInfo 用户信息
+     */
+    public static void set(UserInfo userInfo) {
+        USER_THREAD_LOCAL.set(userInfo);
+    }
+
+    /**
+     * 获取当前用户信息
+     *
+     * @return 用户信息，未设置时返回 null
+     */
+    public static UserInfo get() {
+        return USER_THREAD_LOCAL.get();
+    }
+
+    /**
+     * 获取当前用户ID
+     *
+     * @return 用户ID
+     */
+    public static String getUserId() {
+        UserInfo user = get();
+        return user != null ? user.getUserId() : null;
+    }
+
+    /**
+     * 获取当前用户名
+     *
+     * @return 用户名
+     */
+    public static String getUsername() {
+        UserInfo user = get();
+        return user != null ? user.getUsername() : null;
+    }
+
+    /**
+     * 清除当前线程的用户信息
+     *
+     * <p>必须在请求结束后调用，避免内存泄漏</p>
+     */
+    public static void clear() {
+        USER_THREAD_LOCAL.remove();
+    }
+
+    /**
+     * 用户信息内部类
+     */
+    @Data
+    public static class UserInfo implements Serializable {
+        private static final long serialVersionUID = 1L;
+
+        /** 用户ID */
+        private String userId;
+
+        /** 用户名 */
+        private String username;
+
+        /** 租户ID（多租户场景） */
+        private String tenantId;
+
+        /** 组织编码 */
+        private String orgCode;
+
+        /** 组织名称 */
+        private String orgName;
+    }
+}
+```
+
+***
+
+## 7. 实体类开发
+
+### 7.1 主实体类模板
+
+```java
+package com.example.xxx.model.entity;
+
+import com.baomidou.mybatisplus.annotation.*;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import lombok.Data;
+import java.io.Serializable;
+import java.time.LocalDateTime;
+import java.util.List;
+
+/**
+ * XXX 实体类
+ *
+ * <p>对应数据库表：t_xxx</p>
+ * <p>功能说明：存储 XXX 业务数据</p>
+ *
+ * @author developer
+ */
+@Data
+@TableName("t_xxx")
+public class Xxx implements Serializable {
+
+    private static final long serialVersionUID = 1L;
+
+    /**
+     * 主键 ID（自增）
+     *
+     * <p>JSON 反序列化时忽略该字段，避免插入时冲突</p>
+     */
+    @JsonIgnore
+    @TableId(value = "id", type = IdType.AUTO)
+    private Long id;
+
+    /** 业务 ID（唯一标识） */
+    @TableField("biz_id")
+    private String bizId;
+
+    /** 业务字段1 */
+    @TableField("field1")
+    private String field1;
+
+    /** 业务字段2 */
+    @TableField("field2")
+    private Integer field2;
+
+    /** 原始 JSON 入参（保存完整请求 JSON，用于问题排查） */
+    @TableField("original_json")
+    private String originalJson;
+
+    /** 同步状态：SYNCED-已同步 / FAILED-同步失败 */
+    @TableField("status")
+    private String status;
+
+    /** 创建时间 */
+    @TableField(value = "create_time", fill = FieldFill.INSERT)
+    private LocalDateTime createTime;
+
+    /** 更新时间 */
+    @TableField(value = "update_time", fill = FieldFill.INSERT_UPDATE)
+    private LocalDateTime updateTime;
+
+    /** 创建人 */
+    @TableField(value = "create_by", fill = FieldFill.INSERT)
+    private String createBy;
+
+    /** 更新人 */
+    @TableField(value = "update_by", fill = FieldFill.INSERT_UPDATE)
+    private String updateBy;
+
+    /** 逻辑删除：0-未删除，1-已删除 */
+    @TableLogic
+    @TableField("deleted")
+    private Integer deleted;
+
+    /** 关联明细列表（非数据库字段） */
+    @TableField(exist = false)
+    private List<XxxDetail> details;
+}
+```
+
+### 7.2 明细实体类模板
+
+```java
+package com.example.xxx.model.entity;
+
+import com.baomidou.mybatisplus.annotation.*;
+import lombok.Data;
+import java.io.Serializable;
+import java.time.LocalDateTime;
+
+/**
+ * XXX 明细实体类
+ *
+ * <p>对应数据库表：t_xxx_detail</p>
+ *
+ * @author developer
+ */
+@Data
+@TableName("t_xxx_detail")
+public class XxxDetail implements Serializable {
+
+    private static final long serialVersionUID = 1L;
+
+    @TableId(value = "id", type = IdType.AUTO)
+    private Long id;
+
+    /** 关联主表业务 ID */
+    @TableField("biz_id")
+    private String bizId;
+
+    /** 明细字段1 */
+    @TableField("detail_field1")
+    private String detailField1;
+
+    @TableField(value = "create_time", fill = FieldFill.INSERT)
+    private LocalDateTime createTime;
+
+    @TableField(value = "update_time", fill = FieldFill.INSERT_UPDATE)
+    private LocalDateTime updateTime;
+
+    @TableLogic
+    @TableField("deleted")
+    private Integer deleted;
+}
+```
+
+### 7.3 实体类开发最佳实践
+
+| 要点 | 说明 | 最佳实践 |
+|------|------|---------|
+| **使用 Lombok** | @Data 注解自动生成 getter/setter | 减少样板代码，IDE 需安装插件 |
+| **日期用 LocalDateTime** | Java 8 时间 API | 线程安全，支持自动格式化 |
+| **@JsonIgnore** | 主键 ID 字段添加 | 避免插入时 ID 冲突 |
+| **@TableName** | 指定表名 | 明确映射关系 |
+| **@TableId** | 自增主键 | 使用 IdType.AUTO |
+| **@TableField** | 字段映射 | 驼峰转下划线 |
+| **@TableField(exist=false)** | 非数据库字段 | 用于关联对象 |
+| **@TableLogic** | 逻辑删除字段 | MyBatis Plus 自动处理 |
+| **@FieldFill** | 自动填充 | 配合 MetaObjectHandler 自动填充审计字段 |
+| **implements Serializable** | 序列化 | 支持分布式环境 |
+
+***
+
+## 8. Mapper 开发
+
+### 8.1 Mapper 接口模板
+
+```java
+package com.example.xxx.mapper;
+
+import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.example.xxx.model.entity.Xxx;
+import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Select;
+
+/**
+ * XXX Mapper 接口
+ *
+ * <p>功能说明：XXX 表数据访问层</p>
+ * <p>继承 BaseMapper 可获得基础 CRUD 方法</p>
+ *
+ * @author developer
+ */
+@Mapper
+public interface XxxMapper extends BaseMapper<Xxx> {
+
+    /**
+     * 根据业务 ID 查询数据
+     *
+     * @param bizId 业务 ID
+     * @return 实体对象，不存在则返回 null
+     */
+    @Select("SELECT * FROM t_xxx WHERE biz_id = #{bizId} AND deleted = 0")
+    Xxx findByBizId(@Param("bizId") String bizId);
+}
+```
+
+### 8.2 Mapper 开发最佳实践
+
+| 要点 | 说明 | 最佳实践 |
+|------|------|---------|
+| **extends BaseMapper<T>** | 继承 MyBatis Plus 基础方法 | 避免重复编写 CRUD 代码 |
+| **@Mapper** | 标注为 Mapper 接口 | Spring 自动扫描注册 |
+| **@Select** | 简单查询使用注解 SQL | 提高开发效率 |
+| **复杂查询** | 使用 XML 映射文件 | 保持 SQL 可维护性 |
+| **@Param** | 参数注解 | 明确参数名称 |
+| **逻辑删除** | SQL 中添加 deleted = 0 | 确保不查询已删除数据 |
+
+***
+
+## 9. Service 层开发
+
+### 9.1 Service 模板
+
+```java
+package com.example.xxx.service;
+
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.example.xxx.common.context.UserContext;
+import com.example.xxx.mapper.XxxDetailMapper;
+import com.example.xxx.mapper.XxxMapper;
+import com.example.xxx.model.entity.Xxx;
+import com.example.xxx.model.entity.XxxDetail;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import java.time.LocalDateTime;
+import java.util.List;
+
+/**
+ * XXX 业务服务类
+ *
+ * <p>功能说明：处理 XXX 相关的业务逻辑</p>
+ *
+ * @author developer
+ */
+@Service
+public class XxxService {
+
+    private static final Logger log = LoggerFactory.getLogger(XxxService.class);
+
+    @Autowired
+    private XxxMapper xxxMapper;
+
+    @Autowired
+    private XxxDetailMapper xxxDetailMapper;
+
+    /**
+     * 保存数据
+     *
+     * <p>说明：新增数据，设置审计字段</p>
+     *
+     * @param xxx 实体对象
+     * @return 保存后的实体对象
+     */
+    @Transactional(rollbackFor = Throwable.class)
+    public Xxx saveXxx(Xxx xxx) {
+        LocalDateTime now = LocalDateTime.now();
+        String currentUser = UserContext.getUserId();
+
+        xxx.setCreateTime(now);
+        xxx.setUpdateTime(now);
+        xxx.setCreateBy(currentUser);
+        xxx.setUpdateBy(currentUser);
+        xxx.setStatus("SYNCED");
+
+        xxxMapper.insert(xxx);
+
+        if (xxx.getDetails() != null && !xxx.getDetails().isEmpty()) {
+            for (XxxDetail detail : xxx.getDetails()) {
+                detail.setBizId(xxx.getBizId());
+                detail.setCreateTime(now);
+                detail.setUpdateTime(now);
+                xxxDetailMapper.insert(detail);
+            }
+        }
+
+        return xxx;
+    }
+
+    /**
+     * 更新数据（Upsert 模式）
+     *
+     * <p>说明：存在则更新，不存在则插入</p>
+     * <p>策略：根据 bizId 判断数据是否存在</p>
+     *
+     * @param xxx 实体对象
+     * @return 更新后的实体对象
+     */
+    @Transactional(rollbackFor = Throwable.class)
+    public Xxx upsertXxx(Xxx xxx) {
+        LocalDateTime now = LocalDateTime.now();
+        String currentUser = UserContext.getUserId();
+
+        Xxx existingXxx = xxxMapper.findByBizId(xxx.getBizId());
+
+        xxx.setUpdateTime(now);
+        xxx.setUpdateBy(currentUser);
+
+        if (existingXxx != null) {
+            xxx.setId(existingXxx.getId());
+            xxx.setCreateTime(existingXxx.getCreateTime());
+            xxx.setCreateBy(existingXxx.getCreateBy());
+            if (xxx.getStatus() == null || xxx.getStatus().trim().isEmpty()) {
+                xxx.setStatus("SYNCED");
+            }
+            xxxMapper.updateById(xxx);
+
+            QueryWrapper<XxxDetail> deleteWrapper = new QueryWrapper<>();
+            deleteWrapper.eq("biz_id", xxx.getBizId());
+            xxxDetailMapper.delete(deleteWrapper);
+        } else {
+            xxx.setCreateTime(now);
+            xxx.setCreateBy(currentUser);
+            if (xxx.getStatus() == null || xxx.getStatus().trim().isEmpty()) {
+                xxx.setStatus("SYNCED");
+            }
+            xxxMapper.insert(xxx);
+        }
+
+        if (xxx.getDetails() != null && !xxx.getDetails().isEmpty()) {
+            for (XxxDetail detail : xxx.getDetails()) {
+                detail.setBizId(xxx.getBizId());
+                detail.setCreateTime(now);
+                detail.setUpdateTime(now);
+                xxxDetailMapper.insert(detail);
+            }
+        }
+
+        return xxx;
+    }
+
+    /**
+     * 根据业务 ID 查询
+     *
+     * @param bizId 业务 ID
+     * @return 实体对象，不存在则返回 null
+     */
+    public Xxx getByBizId(String bizId) {
+        return xxxMapper.findByBizId(bizId);
+    }
+
+    /**
+     * 删除数据（级联删除明细）
+     *
+     * @param bizId 业务 ID
+     * @return true-删除成功，false-删除失败
+     */
+    @Transactional(rollbackFor = Throwable.class)
+    public boolean deleteByBizId(String bizId) {
+        try {
+            QueryWrapper<XxxDetail> detailWrapper = new QueryWrapper<>();
+            detailWrapper.eq("biz_id", bizId);
+            xxxDetailMapper.delete(detailWrapper);
+
+            QueryWrapper<Xxx> wrapper = new QueryWrapper<>();
+            wrapper.eq("biz_id", bizId);
+            int count = xxxMapper.delete(wrapper);
+
+            return count > 0;
+        } catch (Exception e) {
+            log.error("删除数据失败, bizId={}", bizId, e);
+            return false;
+        }
+    }
+
+    /**
+     * 批量删除
+     *
+     * <p>说明：统一事务，全部成功或全部回滚</p>
+     *
+     * @param bizIds 业务 ID 列表
+     * @return 删除的数量
+     */
+    @Transactional(rollbackFor = Throwable.class)
+    public int batchDelete(List<String> bizIds) {
+        QueryWrapper<XxxDetail> detailWrapper = new QueryWrapper<>();
+        detailWrapper.in("biz_id", bizIds);
+        xxxDetailMapper.delete(detailWrapper);
+
+        QueryWrapper<Xxx> wrapper = new QueryWrapper<>();
+        wrapper.in("biz_id", bizIds);
+        return xxxMapper.delete(wrapper);
+    }
+
+    /**
+     * 按时间范围查询
+     *
+     * @param startTime 开始时间
+     * @param endTime   结束时间
+     * @return 实体列表，按创建时间倒序排列
+     */
+    public List<Xxx> getByTimeRange(LocalDateTime startTime, LocalDateTime endTime) {
+        QueryWrapper<Xxx> wrapper = new QueryWrapper<>();
+        if (startTime != null) {
+            wrapper.ge("create_time", startTime);
+        }
+        if (endTime != null) {
+            wrapper.le("create_time", endTime);
+        }
+        wrapper.orderByDesc("create_time");
+        return xxxMapper.selectList(wrapper);
+    }
+}
+```
+
+### 9.2 Service 开发最佳实践
+
+| 要点 | 说明 | 最佳实践 |
+|------|------|---------|
+| **@Transactional** | 事务注解 | 使用 rollbackFor = Throwable.class |
+| **SLF4J 日志** | 使用 Logger | 占位符 {} 避免字符串拼接 |
+| **upsert 逻辑** | 插入或更新 | 根据 bizId 判断 |
+| **级联删除** | 先删明细再删主表 | 保证数据一致性 |
+| **UserContext** | 获取当前用户 | 使用 ThreadLocal 保证线程安全 |
+| **LocalDateTime** | Java 8 时间 API | 线程安全，格式化方便 |
+| **方法注释** | 详细说明功能 | 包含参数、返回值说明 |
+
+***
+
+## 10. Controller 开发
+
+### 10.1 Controller 模板
+
+```java
+package com.example.xxx.controller;
+
+import com.example.xxx.common.result.Result;
+import com.example.xxx.model.entity.Xxx;
+import com.example.xxx.service.XxxService;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.*;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * XXX 控制器
+ *
+ * <p>功能说明：提供 XXX 相关的 RESTful API 接口</p>
+ * <p>接口路径：/api/v1/xxx</p>
+ *
+ * @author developer
+ */
+@RestController
+@RequestMapping("/api/v1/xxx")
+public class XxxController {
+
+    private static final Logger log = LoggerFactory.getLogger(XxxController.class);
+
+    private final XxxService xxxService;
+    private final ObjectMapper objectMapper;
+
+    @Autowired
+    public XxxController(XxxService xxxService, ObjectMapper objectMapper) {
+        this.xxxService = xxxService;
+        this.objectMapper = objectMapper;
+    }
+
+    /**
+     * 单条数据同步接口
+     *
+     * <p>接口路径：POST /api/v1/xxx/sync</p>
+     * <p>功能说明：同步单条 XXX 数据到本地数据库</p>
+     *
+     * @param originalJson 原始 JSON 入参
+     * @return 统一响应格式
+     */
+    @PostMapping("/sync")
+    public Result<Map<String, Object>> sync(@RequestBody String originalJson) {
+        try {
+            String trimmedJson = originalJson.trim();
+            if (trimmedJson.startsWith("[")) {
+                return Result.fail(400, "请求格式错误：当前接口仅支持单条数据同步，请使用 /api/v1/xxx/syncBatch");
+            }
+
+            Xxx savedXxx = xxxService.upsertXxx(parseDetails(originalJson));
+
+            Map<String, Object> data = Map.of(
+                    "bizId", savedXxx.getBizId(),
+                    "status", savedXxx.getStatus()
+            );
+            return Result.success(data);
+        } catch (Exception e) {
+            log.error("同步数据失败", e);
+            return Result.fail("同步失败：" + e.getMessage());
+        }
+    }
+
+    /**
+     * 批量数据同步接口
+     *
+     * <p>接口路径：POST /api/v1/xxx/syncBatch</p>
+     * <p>功能说明：批量同步 XXX 数据，每条数据独立处理</p>
+     *
+     * @param dataList 数据列表
+     * @return 统一响应格式
+     */
+    @PostMapping("/syncBatch")
+    public Result<Map<String, Object>> syncBatch(@RequestBody List<Map<String, Object>> dataList) {
+        try {
+            int successCount = 0;
+            int failCount = 0;
+
+            for (Map<String, Object> dataMap : dataList) {
+                try {
+                    String jsonStr = objectMapper.writeValueAsString(dataMap);
+                    xxxService.upsertXxx(parseDetails(jsonStr));
+                    successCount++;
+                } catch (Exception e) {
+                    log.warn("批量同步单条失败: {}", e.getMessage());
+                    failCount++;
+                }
+            }
+
+            Map<String, Object> data = Map.of(
+                    "totalCount", dataList.size(),
+                    "successCount", successCount,
+                    "failCount", failCount
+            );
+            return Result.success(data);
+        } catch (Exception e) {
+            log.error("批量同步失败", e);
+            return Result.fail("批量同步失败：" + e.getMessage());
+        }
+    }
+
+    /**
+     * 解析明细数据
+     *
+     * @param jsonStr JSON 字符串
+     * @return 实体对象
+     * @throws Exception 解析失败时抛出异常
+     */
+    private Xxx parseDetails(String jsonStr) throws Exception {
+        Xxx xxx = objectMapper.readValue(jsonStr, Xxx.class);
+        xxx.setOriginalJson(jsonStr);
+        return xxx;
+    }
+
+    /**
+     * 根据业务 ID 查询
+     *
+     * <p>接口路径：GET /api/v1/xxx/{bizId}</p>
+     *
+     * @param bizId 业务 ID
+     * @return 统一响应格式
+     */
+    @GetMapping("/{bizId}")
+    public Result<Xxx> getByBizId(@PathVariable String bizId) {
+        Xxx xxx = xxxService.getByBizId(bizId);
+        if (xxx != null) {
+            return Result.success(xxx);
+        }
+        return Result.fail(404, "数据不存在");
+    }
+
+    /**
+     * 根据业务 ID 删除
+     *
+     * <p>接口路径：DELETE /api/v1/xxx/{bizId}</p>
+     *
+     * @param bizId 业务 ID
+     * @return 统一响应格式
+     */
+    @DeleteMapping("/{bizId}")
+    public Result<Void> deleteByBizId(@PathVariable String bizId) {
+        boolean deleted = xxxService.deleteByBizId(bizId);
+        if (deleted) {
+            return Result.success("删除成功", null);
+        }
+        return Result.fail(404, "数据不存在或删除失败");
+    }
+}
+```
+
+### 10.2 Controller 开发最佳实践
+
+| 要点 | 说明 | 最佳实践 |
+|------|------|---------|
+| **构造器注入** | 替代字段注入 | 便于单元测试，明确依赖 |
+| **统一响应 Result** | 使用 Result 封装 | 保持接口一致性 |
+| **SLF4J 日志** | 使用 Logger | 占位符 {} 避免字符串拼接 |
+| **数组格式检查** | 友好提示 | 引导用户使用正确的接口 |
+| **API 版本号** | 路径中包含版本 | /api/v1/xxx，便于后续升级 |
+| **RESTful 规范** | GET/POST/PUT/DELETE | 语义化的 HTTP 方法 |
+| **异常处理** | 捕获异常记录日志 | 返回友好错误信息 |
+| **方法注释** | 详细说明接口信息 | 包含路径、功能、参数、返回值 |
+
+### 10.3 接收 XML 格式请求示例
+
+**场景**：外部系统推送 XML 格式数据
+
+```java
+package com.example.xxx.controller;
+
+import com.example.xxx.common.result.Result;
+import com.example.xxx.service.XxxService;
+import org.dom4j.Element;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.*;
+import java.util.HashMap;
+import java.util.Map;
+
+/**
+ * XXX 控制器（XML 接口示例）
+ *
+ * <p>功能说明：接收外部系统推送的 XML 格式数据</p>
+ *
+ * @author developer
+ */
+@RestController
+@RequestMapping("/api/v1/xxx")
+public class XxxXmlController {
+
+    private static final Logger log = LoggerFactory.getLogger(XxxXmlController.class);
+
+    @Autowired
+    private XxxService xxxService;
+
+    /**
+     * 接收 XML 格式数据
+     *
+     * <p>接口路径：POST /api/v1/xxx/receiveXml</p>
+     *
+     * @param xmlElement XML 元素对象
+     * @return 统一响应格式
+     */
+    @PostMapping(value = "/receiveXml", consumes = "application/xml")
+    public Result<Map<String, Object>> receiveXml(@RequestBody Element xmlElement) {
+        try {
+            Map<String, Object> jsonData = parseXmlToMap(xmlElement);
+            Map<String, Object> result = xxxService.processXmlData(jsonData);
+            return Result.success(result);
+        } catch (Exception e) {
+            log.error("接收XML数据失败", e);
+            return Result.fail("处理失败：" + e.getMessage());
+        }
+    }
+
+    /**
+     * 解析 XML 为 Map
+     */
+    private Map<String, Object> parseXmlToMap(Element xmlElement) {
+        Map<String, Object> map = new HashMap<>();
+        map.put("field1", xmlElement.elementTextTrim("field1"));
+        map.put("field2", xmlElement.elementTextTrim("field2"));
+        return map;
+    }
+}
+```
+
+***
+
+## 11. 启动类开发
+
+```java
+package com.example.xxx;
+
+import org.mybatis.spring.annotation.MapperScan;
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+/**
+ * Spring Boot 应用启动类
+ *
+ * <p>功能说明：</p>
+ * <ul>
+ *   <li>@SpringBootApplication：Spring Boot 自动配置</li>
+ *   <li>@MapperScan：扫描 MyBatis Mapper 接口</li>
+ * </ul>
+ *
+ * @author developer
+ */
+@SpringBootApplication
+@MapperScan("com.example.xxx.mapper")
+public class ApiXxxApplication {
+
+    public static void main(String[] args) {
+        SpringApplication.run(ApiXxxApplication.class, args);
+    }
+}
+```
+
+***
+
+## 12. 配置类开发
+
+### 12.1 MybatisPlusConfig.java
+
+```java
+package com.example.xxx.config;
+
+import com.baomidou.mybatisplus.annotation.DbType;
+import com.baomidou.mybatisplus.core.handlers.MetaObjectHandler;
+import com.baomidou.mybatisplus.extension.plugins.MybatisPlusInterceptor;
+import com.baomidou.mybatisplus.extension.plugins.inner.BlockAttackInnerInterceptor;
+import com.baomidou.mybatisplus.extension.plugins.inner.PaginationInnerInterceptor;
+import com.example.xxx.common.context.UserContext;
+import org.apache.ibatis.reflection.MetaObject;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import java.time.LocalDateTime;
+
+/**
+ * MyBatis Plus 配置类
+ *
+ * <p>功能说明：</p>
+ * <ul>
+ *   <li>分页插件：支持分页查询</li>
+ *   <li>防止全表更新：避免误操作</li>
+ *   <li>自动填充：审计字段自动填充</li>
+ * </ul>
+ *
+ * @author developer
+ */
+@Configuration
+public class MybatisPlusConfig {
+
+    /**
+     * MyBatis Plus 拦截器
+     */
+    @Bean
+    public MybatisPlusInterceptor mybatisPlusInterceptor() {
+        MybatisPlusInterceptor interceptor = new MybatisPlusInterceptor();
+        interceptor.addInnerInterceptor(new PaginationInnerInterceptor(DbType.MYSQL));
+        interceptor.addInnerInterceptor(new BlockAttackInnerInterceptor());
+        return interceptor;
+    }
+
+    /**
+     * 自动填充处理器
+     *
+     * <p>说明：自动填充 create_time、update_time、create_by、update_by 字段</p>
+     */
+    @Bean
+    public MetaObjectHandler metaObjectHandler() {
+        return new MetaObjectHandler() {
+
+            @Override
+            public void insertFill(MetaObject metaObject) {
+                this.strictInsertFill(metaObject, "createTime", LocalDateTime.class, LocalDateTime.now());
+                this.strictInsertFill(metaObject, "updateTime", LocalDateTime.class, LocalDateTime.now());
+                this.strictInsertFill(metaObject, "createBy", String.class, UserContext.getUserId());
+                this.strictInsertFill(metaObject, "updateBy", String.class, UserContext.getUserId());
+            }
+
+            @Override
+            public void updateFill(MetaObject metaObject) {
+                this.strictUpdateFill(metaObject, "updateTime", LocalDateTime.class, LocalDateTime.now());
+                this.strictUpdateFill(metaObject, "updateBy", String.class, UserContext.getUserId());
+            }
+        };
+    }
+}
+```
+
+### 12.2 JacksonConfig.java
+
+```java
+package com.example.xxx.config;
+
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.fasterxml.jackson.datatype.jsr310.deser.LocalDateTimeDeserializer;
+import com.fasterxml.jackson.datatype.jsr310.ser.LocalDateTimeSerializer;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Primary;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.TimeZone;
+
+/**
+ * Jackson 配置类
+ *
+ * <p>功能说明：自定义 JSON 序列化和反序列化行为</p>
+ * <p>解决的问题：</p>
+ * <ul>
+ *   <li>忽略 null 字段，减少数据传输</li>
+ *   <li>忽略未知属性，提高兼容性</li>
+ *   <li>统一时区为 GMT+8</li>
+ *   <li>支持 Java 8 时间 API</li>
+ * </ul>
+ *
+ * @author developer
+ */
+@Configuration
+public class JacksonConfig {
+
+    private static final String DATE_TIME_PATTERN = "yyyy-MM-dd HH:mm:ss";
+
+    @Bean
+    @Primary
+    public ObjectMapper objectMapper() {
+        ObjectMapper objectMapper = new ObjectMapper();
+
+        objectMapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);
+        objectMapper.configure(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS, false);
+        objectMapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+        objectMapper.setTimeZone(TimeZone.getTimeZone("GMT+8"));
+
+        JavaTimeModule javaTimeModule = new JavaTimeModule();
+        javaTimeModule.addSerializer(LocalDateTime.class,
+                new LocalDateTimeSerializer(DateTimeFormatter.ofPattern(DATE_TIME_PATTERN)));
+        javaTimeModule.addDeserializer(LocalDateTime.class,
+                new LocalDateTimeDeserializer(DateTimeFormatter.ofPattern(DATE_TIME_PATTERN)));
+        objectMapper.registerModule(javaTimeModule);
+
+        return objectMapper;
+    }
+}
+```
+
+### 12.3 WebMvcConfig.java
+
+```java
+package com.example.xxx.config;
+
+import com.example.xxx.common.context.UserContext;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.web.servlet.HandlerInterceptor;
+import org.springframework.web.servlet.config.annotation.CorsRegistry;
+import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+
+/**
+ * Web MVC 配置类
+ *
+ * <p>功能说明：</p>
+ * <ul>
+ *   <li>配置用户上下文拦截器</li>
+ *   <li>配置跨域支持</li>
+ * </ul>
+ *
+ * @author developer
+ */
+@Configuration
+public class WebMvcConfig implements WebMvcConfigurer {
+
+    private static final Logger log = LoggerFactory.getLogger(WebMvcConfig.class);
+
+    /**
+     * 配置拦截器
+     */
+    @Override
+    public void addInterceptors(InterceptorRegistry registry) {
+        registry.addInterceptor(new HandlerInterceptor() {
+
+            @Override
+            public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
+                String userId = request.getHeader("X-User-Id");
+                String username = request.getHeader("X-User-Name");
+                String orgCode = request.getHeader("X-Org-Code");
+
+                if (userId != null) {
+                    UserContext.UserInfo userInfo = new UserContext.UserInfo();
+                    userInfo.setUserId(userId);
+                    userInfo.setUsername(username);
+                    userInfo.setOrgCode(orgCode);
+                    UserContext.set(userInfo);
+                }
+                return true;
+            }
+
+            @Override
+            public void afterCompletion(HttpServletRequest request, HttpServletResponse response,
+                                        Object handler, Exception ex) {
+                UserContext.clear();
+            }
+        }).addPathPatterns("/api/**");
+    }
+
+    /**
+     * 配置跨域支持
+     */
+    @Override
+    public void addCorsMappings(CorsRegistry registry) {
+        registry.addMapping("/api/**")
+                .allowedOriginPatterns("*")
+                .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
+                .allowedHeaders("*")
+                .allowCredentials(true)
+                .maxAge(3600);
+    }
+}
+```
+
+### 12.4 ScheduleConfig.java（定时任务项目专用）
+
+```java
+package com.example.xxx.config;
+
+import org.springframework.context.annotation.Configuration;
+import org.springframework.scheduling.annotation.EnableScheduling;
+
+/**
+ * 定时任务配置类
+ *
+ * <p>功能说明：启用 Spring 定时任务支持</p>
+ *
+ * @author developer
+ */
+@Configuration
+@EnableScheduling
+public class ScheduleConfig {
+}
+```
+
+### 12.5 application.yml
+
+```yaml
+server:
+  port: 8080
+  servlet:
+    context-path: /api-xxx
+
+spring:
+  datasource:
+    url: jdbc:mysql://localhost:3306/biz_db?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    username: root
+    password: your_password
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      minimum-idle: 5
+      maximum-pool-size: 20
+      idle-timeout: 30000
+      max-lifetime: 1800000
+      connection-timeout: 30000
+      pool-name: ApiXxxHikariCP
+
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: GMT+8
+    default-property-inclusion: non_null
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+  global-config:
+    db-config:
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+      id-type: auto
+
+logging:
+  level:
+    root: INFO
+    com.example.xxx: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+  logback:
+    rollingpolicy:
+      max-file-size: 100MB
+      max-history: 30
+      file-name-pattern: "logs/api-xxx.%d{yyyy-MM-dd}.%i.log"
+  file:
+    name: logs/api-xxx.log
+```
+
+### 12.6 application-dev.yml（开发环境）
+
+```yaml
+spring:
+  datasource:
+    url: jdbc:mysql://localhost:3306/biz_db?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai
+    username: root
+    password: dev_password
+
+mybatis-plus:
+  configuration:
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+
+logging:
+  level:
+    com.example.xxx: DEBUG
+
+xxx:
+  api:
+    mock-enabled: true
+    debug-enabled: true
+```
+
+### 12.7 application-prod.yml（生产环境）
+
+```yaml
+spring:
+  datasource:
+    url: jdbc:mysql://prod-db-server:3306/biz_db?useUnicode=true&characterEncoding=utf-8&useSSL=true&serverTimezone=Asia/Shanghai
+    username: prod_user
+    password: ${DB_PASSWORD}
+
+mybatis-plus:
+  configuration:
+    log-impl: org.apache.ibatis.logging.nologging.NoLoggingImpl
+
+logging:
+  level:
+    root: WARN
+    com.example.xxx: INFO
+
+xxx:
+  api:
+    mock-enabled: false
+    debug-enabled: false
+```
+
+***
+
+## 13. 第三方 API 客户端开发（可选）
+
+### 13.1 XxxConfig.java
+
+```java
+package com.example.xxx.service;
+
+import lombok.Data;
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.stereotype.Component;
+
+/**
+ * 第三方平台配置类
+ *
+ * <p>功能说明：从 application.yml 读取第三方平台配置</p>
+ * <p>配置示例：</p>
+ * <pre>
+ * xxx:
+ *   api:
+ *     base-url: http://api.example.com
+ *     app-key: your-app-key
+ *     app-secret: your-app-secret
+ *     mock-enabled: false
+ * </pre>
+ *
+ * @author developer
+ */
+@Data
+@Component
+@ConfigurationProperties(prefix = "xxx.api")
+public class XxxConfig {
+
+    /** API 基础地址 */
+    private String baseUrl;
+
+    /** 应用 Key */
+    private String appKey;
+
+    /** 应用密钥 */
+    private String appSecret;
+
+    /** 加密类型（SM2/AES/空表示不加密） */
+    private String encType;
+
+    /** 是否启用 Mock 模式（用于本地测试） */
+    private boolean mockEnabled = false;
+
+    /** 是否开启 Debug 模式 */
+    private boolean debugEnabled = false;
+}
+```
+
+### 13.2 XxxApiClient.java
+
+```java
+package com.example.xxx.service;
+
+import com.alibaba.fastjson.JSONObject;
+import com.example.xxx.util.OkHttpUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
+import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Optional;
+
+/**
+ * 第三方 API 客户端
+ *
+ * <p>功能说明：</p>
+ * <ul>
+ *   <li>封装调用第三方平台接口的 HTTP 请求</li>
+ *   <li>支持 Mock 模式用于本地测试</li>
+ *   <li>统一日志记录</li>
+ * </ul>
+ *
+ * @author developer
+ */
+@Component
+public class XxxApiClient {
+
+    private static final Logger log = LoggerFactory.getLogger(XxxApiClient.class);
+
+    private final XxxConfig config;
+    private final XxxMockService mockService;
+
+    @Autowired
+    public XxxApiClient(XxxConfig config, XxxMockService mockService) {
+        this.config = config;
+        this.mockService = mockService;
+    }
+
+    /**
+     * 调用第三方接口示例
+     *
+     * @param params 请求参数
+     * @return 接口响应结果
+     */
+    public JSONObject doSomething(JSONObject params) {
+        long startTime = System.currentTimeMillis();
+
+        if (config.isMockEnabled()) {
+            log.info("[MOCK] doSomething, params={}", params);
+            return mockService.mockDoSomething();
+        }
+
+        String url = config.getBaseUrl() + "/api/xxx/doSomething";
+        try {
+            JSONObject requestBody = buildRequestBody(params);
+            Map<String, String> headerMap = buildRequestHeader();
+
+            String response = OkHttpUtils.builder()
+                    .url(url)
+                    .addHeader(headerMap)
+                    .addBody(requestBody.toJSONString())
+                    .jsonPost()
+                    .sync();
+
+            long elapsed = System.currentTimeMillis() - startTime;
+            log.info("doSomething, url={}, elapsed={}ms, response={}", url, elapsed, response);
+
+            return parseResponse(response);
+        } catch (IOException e) {
+            log.error("调用第三方接口失败, url={}", url, e);
+            return getErrorResponse("调用失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 构建请求体
+     *
+     * <p>说明：根据 encType 配置决定是否加密数据</p>
+     */
+    private JSONObject buildRequestBody(JSONObject params) {
+        JSONObject requestBody = new JSONObject();
+        String encType = Optional.ofNullable(config.getEncType()).orElse("").trim();
+
+        if (encType.isEmpty()) {
+            requestBody.put("data", params);
+            requestBody.put("encType", "");
+        } else if ("SM2".equalsIgnoreCase(encType)) {
+            try {
+                String encryptedData = SM2Encryptor.encrypt(params.toJSONString(), config.getAppSecret());
+                String sign = SM2Encryptor.sign(params.toJSONString(), config.getAppSecret());
+                requestBody.put("data", encryptedData);
+                requestBody.put("sign", sign);
+                requestBody.put("encType", "SM2");
+            } catch (Exception e) {
+                log.error("SM2加密失败", e);
+                throw new RuntimeException("SM2加密失败: " + e.getMessage());
+            }
+        } else if ("AES".equalsIgnoreCase(encType)) {
+            try {
+                String encryptedData = AESUtil.encrypt(params.toJSONString(), config.getAppSecret());
+                requestBody.put("data", encryptedData);
+                requestBody.put("encType", "AES");
+            } catch (Exception e) {
+                log.error("AES加密失败", e);
+                throw new RuntimeException("AES加密失败: " + e.getMessage());
+            }
+        } else {
+            throw new RuntimeException("不支持的加密类型: " + encType);
+        }
+
+        return requestBody;
+    }
+
+    /**
+     * 构建请求头
+     */
+    private Map<String, String> buildRequestHeader() {
+        Map<String, String> headerMap = new HashMap<>();
+        headerMap.put("Content-Type", "application/json; charset=utf-8");
+        headerMap.put("appKey", config.getAppKey());
+        return headerMap;
+    }
+
+    /**
+     * 解析响应
+     */
+    private JSONObject parseResponse(String response) {
+        try {
+            return JSONObject.parseObject(response);
+        } catch (Exception e) {
+            log.error("响应解析失败: {}", response, e);
+            JSONObject result = new JSONObject();
+            result.put("code", "503");
+            result.put("msg", "响应解析失败:" + e.getMessage());
+            return result;
+        }
+    }
+
+    /**
+     * 构造错误响应
+     */
+    private JSONObject getErrorResponse(String errorMsg) {
+        JSONObject result = new JSONObject();
+        result.put("code", "500");
+        result.put("msg", errorMsg);
+        return result;
+    }
+}
+```
+
+### 13.3 XxxMockService.java
+
+```java
+package com.example.xxx.service;
+
+import com.alibaba.fastjson.JSONObject;
+import org.springframework.stereotype.Component;
+
+/**
+ * Mock 服务
+ *
+ * <p>功能说明：用于本地测试，返回模拟数据</p>
+ *
+ * @author developer
+ */
+@Component
+public class XxxMockService {
+
+    /**
+     * Mock 示例方法
+     *
+     * @return 模拟响应数据
+     */
+    public JSONObject mockDoSomething() {
+        JSONObject result = new JSONObject();
+        result.put("code", "200");
+        result.put("msg", "成功");
+        result.put("data", "模拟数据");
+        return result;
+    }
+}
+```
+
+***
+
+## 14. 定时任务开发（可选）
+
+### 14.1 XxxSyncTask.java
+
+```java
+package com.example.xxx.task;
+
+import com.example.xxx.service.XxxService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.stereotype.Component;
+
+/**
+ * 数据同步定时任务
+ *
+ * <p>功能说明：定时执行数据同步任务</p>
+ *
+ * @author developer
+ */
+@Component
+public class XxxSyncTask {
+
+    private static final Logger log = LoggerFactory.getLogger(XxxSyncTask.class);
+
+    @Autowired
+    private XxxService xxxService;
+
+    /**
+     * 定时任务：每天凌晨 2 点执行
+     *
+     * <p>Cron 表达式说明：秒 分 时 日 月 周</p>
+     * <p>示例：0 0 2 * * ? 表示每天凌晨 2 点执行</p>
+     */
+    @Scheduled(cron = "0 0 2 * * ?")
+    public void syncData() {
+        log.info("开始执行数据同步任务");
+        try {
+            xxxService.syncDataFromExternal();
+            log.info("数据同步任务执行成功");
+        } catch (Exception e) {
+            log.error("数据同步任务执行失败", e);
+        }
+    }
+
+    /**
+     * 定时任务：每 5 分钟执行
+     */
+    @Scheduled(fixedRate = 5 * 60 * 1000)
+    public void heartbeat() {
+        log.debug("心跳检测");
+    }
+}
+```
+
+### 14.2 常用 Cron 表达式
+
+| 表达式 | 说明 |
+|--------|------|
+| `0 0 2 * * ?` | 每天凌晨 2 点 |
+| `0 0/30 * * * ?` | 每 30 分钟 |
+| `0 0 0 1 * ?` | 每月 1 号零点 |
+| `0 0 10,14,16 * * ?` | 每天 10 点、14 点、16 点 |
+| `0 0/5 14 * * ?` | 每天 14 点到 14:55，每 5 分钟 |
+| `0 0 9-17 * * MON-FRI` | 周一到周五 9 点到 17 点整点 |
+
+***
+
+## 15. OkHttp 工具类（可选）
+
+```java
+package com.example.xxx.util;
+
+import okhttp3.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import java.io.IOException;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
+
+/**
+ * OkHttp 工具类
+ *
+ * <p>功能说明：封装 OkHttp 常用操作，支持链式调用</p>
+ *
+ * @author developer
+ */
+public class OkHttpUtils {
+
+    private static final Logger log = LoggerFactory.getLogger(OkHttpUtils.class);
+
+    private static final MediaType JSON_TYPE = MediaType.parse("application/json; charset=utf-8");
+
+    private static final OkHttpClient CLIENT = new OkHttpClient.Builder()
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
+            .build();
+
+    private String url;
+    private Map<String, String> headerMap;
+    private String body;
+
+    private OkHttpUtils() {
+    }
+
+    public static OkHttpUtils builder() {
+        return new OkHttpUtils();
+    }
+
+    public OkHttpUtils url(String url) {
+        this.url = url;
+        return this;
+    }
+
+    public OkHttpUtils addHeader(Map<String, String> headerMap) {
+        this.headerMap = headerMap;
+        return this;
+    }
+
+    public OkHttpUtils addBody(String body) {
+        this.body = body;
+        return this;
+    }
+
+    /**
+     * POST JSON 请求
+     */
+    public OkHttpUtils jsonPost() {
+        return this;
+    }
+
+    /**
+     * 同步执行请求
+     */
+    public String sync() throws IOException {
+        Request.Builder requestBuilder = new Request.Builder().url(url);
+
+        if (headerMap != null) {
+            headerMap.forEach(requestBuilder::addHeader);
+        }
+
+        RequestBody requestBody = body != null ? RequestBody.create(body, JSON_TYPE) : null;
+        requestBuilder.post(requestBody);
+
+        try (Response response = CLIENT.newCall(requestBuilder.build()).execute()) {
+            if (!response.isSuccessful()) {
+                throw new IOException("请求失败, code=" + response.code());
+            }
+            ResponseBody resBody = response.body();
+            return resBody != null ? resBody.string() : "";
+        }
+    }
+
+    /**
+     * GET 请求
+     */
+    public String get() throws IOException {
+        Request.Builder requestBuilder = new Request.Builder().url(url);
+
+        if (headerMap != null) {
+            headerMap.forEach(requestBuilder::addHeader);
+        }
+
+        requestBuilder.get();
+
+        try (Response response = CLIENT.newCall(requestBuilder.build()).execute()) {
+            if (!response.isSuccessful()) {
+                throw new IOException("请求失败, code=" + response.code());
+            }
+            ResponseBody resBody = response.body();
+            return resBody != null ? resBody.string() : "";
+        }
+    }
+}
+```
+
+***
+
+## 16. 构建与部署
+
+### 16.1 本地构建
+
+```bash
+# 清理并打包（跳过测试）
+mvn clean package -DskipTests
+
+# 生成的 JAR 文件位于：target/api-xxx.jar
+```
+
+### 16.2 运行方式
+
+```bash
+# 开发环境运行
+java -jar target/api-xxx.jar
+
+# 指定环境运行
+java -jar target/api-xxx.jar --spring.profiles.active=prod
+
+# 指定端口运行
+java -jar target/api-xxx.jar --server.port=9090
+
+# 后台运行（Linux）
+nohup java -jar target/api-xxx.jar --spring.profiles.active=prod > app.log 2>&1 &
+```
+
+### 16.3 Docker 部署（推荐）
+
+**Dockerfile**：
+
+```dockerfile
+FROM openjdk:8-jdk-alpine
+VOLUME /tmp
+COPY target/api-xxx.jar app.jar
+ENTRYPOINT ["java", "-jar", "/app.jar"]
+EXPOSE 8080
+```
+
+**构建和运行**：
+
+```bash
+# 构建镜像
+docker build -t api-xxx:1.0.0 .
+
+# 运行容器
+docker run -d -p 8080:8080 \
+  -e SPRING_PROFILES_ACTIVE=prod \
+  -e DB_PASSWORD=your_password \
+  --name api-xxx \
+  api-xxx:1.0.0
+```
+
+### 16.4 Systemd 服务（Linux 生产环境）
+
+创建 `/etc/systemd/system/api-xxx.service`：
+
+```ini
+[Unit]
+Description=API XXX Service
+After=network.target
+
+[Service]
+Type=simple
+User=app
+ExecStart=/usr/bin/java -jar /opt/api-xxx/api-xxx.jar --spring.profiles.active=prod
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+# 启用并启动服务
+sudo systemctl enable api-xxx
+sudo systemctl start api-xxx
+
+# 查看状态
+sudo systemctl status api-xxx
+
+# 查看日志
+sudo journalctl -u api-xxx -f
+```
+
+### 16.5 测试接口
+
+```bash
+# 单条同步
+curl -X POST http://localhost:8080/api-xxx/api/v1/xxx/sync \
+  -H "Content-Type: application/json" \
+  -d '{"bizId":"TEST001","field1":"测试数据"}'
+
+# 批量同步
+curl -X POST http://localhost:8080/api-xxx/api/v1/xxx/syncBatch \
+  -H "Content-Type: application/json" \
+  -d '[{"bizId":"TEST001"},{"bizId":"TEST002"}]'
+
+# 查询
+curl http://localhost:8080/api-xxx/api/v1/xxx/TEST001
+
+# 删除
+curl -X DELETE http://localhost:8080/api-xxx/api/v1/xxx/TEST001
+```
+
+***
+
+## 17. 常见问题与解决方案
+
+### 17.1 日期解析错误
+
+**问题**：`Cannot deserialize value of type java.time.LocalDateTime from String`
+
+**解决方案**：
+1. 确认 JacksonConfig 已正确配置 JavaTimeModule
+2. 检查日期格式是否为 `yyyy-MM-dd HH:mm:ss`
+3. 实体类中使用 `LocalDateTime` 类型
+
+### 17.2 事务不回滚
+
+**问题**：异常发生但事务未回滚
+
+**解决方案**：
+```java
+@Transactional(rollbackFor = Throwable.class)
+```
+注意：Spring 默认只回滚 `RuntimeException`，需要显式指定 `rollbackFor`
+
+### 17.3 数据库连接失败
+
+**问题**：无法连接数据库
+
+**解决方案**：
+1. 检查 `application.yml` 中的数据库配置
+2. 确认数据库服务已启动
+3. 检查网络连接和防火墙
+4. 确认 MySQL 驱动版本与数据库版本匹配
+
+### 17.4 MyBatis Plus 逻辑删除不生效
+
+**问题**：查询结果包含已删除的数据
+
+**解决方案**：
+1. 确认实体类中 `deleted` 字段添加了 `@TableLogic` 注解
+2. 确认 `application.yml` 中配置了逻辑删除值
+3. 确认数据库中 `deleted` 字段默认值为 0
+
+### 17.5 Jackson 序列化空值
+
+**问题**：响应中包含 null 字段
+
+**解决方案**：
+1. 在 `application.yml` 中配置 `spring.jackson.default-property-inclusion: non_null`
+2. 或在 JacksonConfig 中配置 `objectMapper.setSerializationInclusion(JsonInclude.Include.NON_NULL)`
+
+### 17.6 跨域问题
+
+**问题**：前端调用接口报 CORS 错误
+
+**解决方案**：
+1. 确认 WebMvcConfig 中配置了 CORS 映射
+2. 检查 `allowedOriginPatterns` 是否包含前端域名
+3. 确认 `allowCredentials` 设置正确
+
+***
+
+## 18. 项目交付检查清单
+
+- [ ] pom.xml 配置正确（Spring Boot Parent、依赖版本正确）
+- [ ] 实体类使用 LocalDateTime 类型存储日期
+- [ ] 实体类使用 Lombok @Data 注解
+- [ ] 实体类主键 ID 添加 @JsonIgnore 注解
+- [ ] Service 层添加正确的事务注解
+- [ ] Controller 使用构造器注入
+- [ ] 使用统一响应封装 Result
+- [ ] 全局异常处理器已配置
+- [ ] 日志使用 SLF4J，关键操作有日志记录
+- [ ] 配置类完整（MybatisPlusConfig、JacksonConfig、WebMvcConfig）
+- [ ] 启动类配置正确（@MapperScan 包含所有 Mapper）
+- [ ] application.yml 多环境配置完整（dev/prod）
+- [ ] 建表 SQL 完整（包含审计字段和索引）
+- [ ] 接口文档完整
+- [ ] 本地测试通过
+- [ ] 打包成功（mvn clean package）
+
+***
+
+## 19. 附录：快速复制模板
+
+### 19.1 接口响应格式模板
+
+```json
+{
+  "code": 200,
+  "message": "操作成功",
+  "data": {},
+  "timestamp": 1710000000000
+}
+```
+
+### 19.2 批量处理响应格式模板
+
+```json
+{
+  "code": 200,
+  "message": "操作成功",
+  "data": {
+    "totalCount": 10,
+    "successCount": 8,
+    "failCount": 2
+  },
+  "timestamp": 1710000000000
+}
+```
+
+### 19.3 分页查询响应格式模板
+
+```json
+{
+  "code": 200,
+  "message": "操作成功",
+  "data": {
+    "records": [],
+    "total": 100,
+    "size": 10,
+    "current": 1,
+    "pages": 10
+  },
+  "timestamp": 1710000000000
+}
+```
+
+### 19.4 错误响应格式模板
+
+```json
+{
+  "code": 500,
+  "message": "操作失败：具体错误信息",
+  "data": null,
+  "timestamp": 1710000000000
+}
+```
+
+***
+
+## 20. 版本历史
+
+| 版本 | 日期 | 变更说明 |
+|------|------|---------|
+| 1.0 | 2026-04-11 | 初始版本，基于通用 Spring Boot 最佳实践 |
+
+***
+
+**文档结束**
+
+按照本文档，只需接口文档即可快速构建可直接部署的接口项目！实际开发时请以接口文档为准进行开发。
