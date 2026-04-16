@@ -2,6 +2,16 @@
   <div class="api-doc-input">
     <h2>接口文档输入</h2>
     
+    <!-- 实现方式选择 -->
+    <div class="implementation-mode">
+      <h3>实现方式</h3>
+      <el-radio-group v-model="implementationMode">
+        <el-radio label="implement">按接口文档实现接口</el-radio>
+        <el-radio label="call">按三方接口文档调用接口</el-radio>
+        <el-radio label="dynamic">根据文档说明动态抉择</el-radio>
+      </el-radio-group>
+    </div>
+    
     <!-- 输入类型选择 -->
     <el-tabs v-model="activeTab">
       <el-tab-pane label="文本输入" name="text">
@@ -14,15 +24,33 @@
               placeholder="请输入接口文档，格式示例：\nAPI: 用户登录\nPath: /api/login\nMethod: POST\nDescription: 用户登录接口\nParameter: username string required\nParameter: password string required"
             ></el-input>
           </el-form-item>
-          <el-form-item label="实现说明">
+          <el-button type="primary" @click="parseTextDoc">解析文档</el-button>
+        </el-form>
+      </el-tab-pane>
+      <el-tab-pane label="JSON格式" name="json">
+        <el-form>
+          <el-form-item label="JSON接口文档">
             <el-input
               type="textarea"
-              :rows="5"
-              v-model="implementationNotes"
-              placeholder="请输入实现说明，例如：使用什么方案，只做哪些接口等"
+              :rows="10"
+              v-model="jsonInput"
+              placeholder="请输入JSON格式的接口文档"
             ></el-input>
           </el-form-item>
-          <el-button type="primary" @click="parseTextDoc">解析文档</el-button>
+          <el-button type="primary" @click="parseJsonDoc">解析JSON文档</el-button>
+        </el-form>
+      </el-tab-pane>
+      <el-tab-pane label="XML格式" name="xml">
+        <el-form>
+          <el-form-item label="XML接口文档">
+            <el-input
+              type="textarea"
+              :rows="10"
+              v-model="xmlInput"
+              placeholder="请输入XML格式的接口文档"
+            ></el-input>
+          </el-form-item>
+          <el-button type="primary" @click="parseXmlDoc">解析XML文档</el-button>
         </el-form>
       </el-tab-pane>
       
@@ -72,6 +100,21 @@
         </el-form>
       </el-tab-pane>
     </el-tabs>
+
+    <!-- 实现说明 -->
+    <div class="implementation-notes">
+      <h3>实现说明</h3>
+      <el-form>
+        <el-form-item label="详细说明">
+          <el-input
+            type="textarea"
+            :rows="5"
+            v-model="implementationNotes"
+            placeholder="请输入实现说明，例如：使用什么方案，只做哪些接口，我方的角色等"
+          ></el-input>
+        </el-form-item>
+      </el-form>
+    </div>
 
     <!-- 解析结果 -->
     <div class="parse-result" v-if="parseResult">
@@ -125,7 +168,10 @@ import { ElMessage } from 'element-plus';
 // 状态
 const activeTab = ref('text');
 const textInput = ref('');
+const jsonInput = ref('');
+const xmlInput = ref('');
 const implementationNotes = ref('');
+const implementationMode = ref('implement');
 const fileType = ref('text');
 const databaseInput = ref('');
 const parseResult = ref(null);
@@ -147,8 +193,9 @@ const parseTextDoc = async () => {
   try {
     const response = await axios.post('http://localhost:8080/api-generator/api/api-doc/parse/text', textInput.value);
     parseResult.value = response.data;
-    // 添加实现说明
+    // 添加实现信息
     parseResult.value.implementationNotes = implementationNotes.value;
+    parseResult.value.implementationMode = implementationMode.value;
     ElMessage.success('解析成功');
   } catch (error) {
     console.error('解析文本接口文档失败:', error);
@@ -176,7 +223,90 @@ const parseTextDoc = async () => {
         }
       ],
       databaseTables: [],
-      implementationNotes: implementationNotes.value
+      implementationNotes: implementationNotes.value,
+      implementationMode: implementationMode.value
+    };
+    ElMessage.success('解析成功（使用模拟数据）');
+  }
+};
+
+const parseJsonDoc = async () => {
+  try {
+    const response = await axios.post('http://localhost:8080/api-generator/api/api-doc/parse/json', jsonInput.value);
+    parseResult.value = response.data;
+    // 添加实现信息
+    parseResult.value.implementationNotes = implementationNotes.value;
+    parseResult.value.implementationMode = implementationMode.value;
+    ElMessage.success('解析成功');
+  } catch (error) {
+    console.error('解析JSON接口文档失败:', error);
+    // 使用模拟数据
+    parseResult.value = {
+      apis: [
+        {
+          name: "用户登录",
+          path: "/api/login",
+          method: "POST",
+          description: "用户登录接口",
+          parameters: [
+            { name: "username", type: "string", required: true },
+            { name: "password", type: "string", required: true }
+          ]
+        },
+        {
+          name: "获取用户信息",
+          path: "/api/user/info",
+          method: "GET",
+          description: "获取用户信息接口",
+          parameters: [
+            { name: "userId", type: "integer", required: true }
+          ]
+        }
+      ],
+      databaseTables: [],
+      implementationNotes: implementationNotes.value,
+      implementationMode: implementationMode.value
+    };
+    ElMessage.success('解析成功（使用模拟数据）');
+  }
+};
+
+const parseXmlDoc = async () => {
+  try {
+    const response = await axios.post('http://localhost:8080/api-generator/api/api-doc/parse/xml', xmlInput.value);
+    parseResult.value = response.data;
+    // 添加实现信息
+    parseResult.value.implementationNotes = implementationNotes.value;
+    parseResult.value.implementationMode = implementationMode.value;
+    ElMessage.success('解析成功');
+  } catch (error) {
+    console.error('解析XML接口文档失败:', error);
+    // 使用模拟数据
+    parseResult.value = {
+      apis: [
+        {
+          name: "用户登录",
+          path: "/api/login",
+          method: "POST",
+          description: "用户登录接口",
+          parameters: [
+            { name: "username", type: "string", required: true },
+            { name: "password", type: "string", required: true }
+          ]
+        },
+        {
+          name: "获取用户信息",
+          path: "/api/user/info",
+          method: "GET",
+          description: "获取用户信息接口",
+          parameters: [
+            { name: "userId", type: "integer", required: true }
+          ]
+        }
+      ],
+      databaseTables: [],
+      implementationNotes: implementationNotes.value,
+      implementationMode: implementationMode.value
     };
     ElMessage.success('解析成功（使用模拟数据）');
   }
@@ -188,6 +318,9 @@ const submitUpload = () => {
 
 const handleFileUploadSuccess = (response) => {
   parseResult.value = response;
+  // 添加实现信息
+  parseResult.value.implementationNotes = implementationNotes.value;
+  parseResult.value.implementationMode = implementationMode.value;
   ElMessage.success('文件上传并解析成功');
 };
 
@@ -201,8 +334,14 @@ const parseDatabaseSchema = async () => {
     if (!parseResult.value) {
       parseResult.value = {
         apis: [],
-        databaseTables: []
+        databaseTables: [],
+        implementationNotes: implementationNotes.value,
+        implementationMode: implementationMode.value
       };
+    } else {
+      // 添加实现信息
+      parseResult.value.implementationNotes = implementationNotes.value;
+      parseResult.value.implementationMode = implementationMode.value;
     }
     parseResult.value.databaseTables = response.data;
     ElMessage.success('解析数据库表结构成功');
@@ -224,6 +363,33 @@ const emit = defineEmits(['next']);
 <style scoped>
 .api-doc-input {
   padding: 20px;
+}
+
+.implementation-mode {
+  margin-bottom: 30px;
+  padding: 20px;
+  background-color: #f0f9ff;
+  border: 1px solid #d6e4ff;
+  border-radius: 4px;
+}
+
+.implementation-mode h3 {
+  margin-bottom: 15px;
+  color: #1677ff;
+}
+
+.implementation-notes {
+  margin-top: 30px;
+  margin-bottom: 30px;
+  padding: 20px;
+  background-color: #f6ffed;
+  border: 1px solid #d9f7be;
+  border-radius: 4px;
+}
+
+.implementation-notes h3 {
+  margin-bottom: 15px;
+  color: #52c41a;
 }
 
 .upload-demo {
