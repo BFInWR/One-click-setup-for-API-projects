@@ -99,7 +99,6 @@
           {{ tech.name }} {{ tech.version }}
         </div>
       </div>
-      <el-button type="success" @click="nextStep">下一步</el-button>
     </div>
   </div>
 </template>
