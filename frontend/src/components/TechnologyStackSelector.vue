@@ -181,6 +181,7 @@ const fetchData = async () => {
       { id: "mysql-8.0", name: "MySQL", version: "8.0+", category: "database" },
       { id: "postgresql-14.0", name: "PostgreSQL", version: "14.0+", category: "database" },
       { id: "oracle-19c", name: "Oracle", version: "19c+", category: "database" },
+      { id: "sqlserver-2022", name: "SQL Server", version: "2022+", category: "database" },
       { id: "vue-3.x", name: "Vue", version: "3.x", category: "frontend" },
       { id: "react-18.x", name: "React", version: "18.x", category: "frontend" },
       { id: "angular-16.x", name: "Angular", version: "16.x", category: "frontend" },
