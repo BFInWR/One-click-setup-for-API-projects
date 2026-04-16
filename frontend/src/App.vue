@@ -72,6 +72,15 @@ const handleApiDocNext = (doc) => {
 };
 
 const nextStep = () => {
+  // 验证当前步骤是否完成
+  if (activeStep.value === 0 && selectedTechStacks.value.length === 0) {
+    // 技术栈未选择
+    return;
+  } else if (activeStep.value === 1 && !apiDoc.value) {
+    // 接口文档未输入
+    return;
+  }
+  
   if (activeStep.value < 3) {
     activeStep.value++;
   }

@@ -14,6 +14,14 @@
               placeholder="请输入接口文档，格式示例：\nAPI: 用户登录\nPath: /api/login\nMethod: POST\nDescription: 用户登录接口\nParameter: username string required\nParameter: password string required"
             ></el-input>
           </el-form-item>
+          <el-form-item label="实现说明">
+            <el-input
+              type="textarea"
+              :rows="5"
+              v-model="implementationNotes"
+              placeholder="请输入实现说明，例如：使用什么方案，只做哪些接口等"
+            ></el-input>
+          </el-form-item>
           <el-button type="primary" @click="parseTextDoc">解析文档</el-button>
         </el-form>
       </el-tab-pane>
@@ -117,6 +125,7 @@ import { ElMessage } from 'element-plus';
 // 状态
 const activeTab = ref('text');
 const textInput = ref('');
+const implementationNotes = ref('');
 const fileType = ref('text');
 const databaseInput = ref('');
 const parseResult = ref(null);
@@ -138,6 +147,8 @@ const parseTextDoc = async () => {
   try {
     const response = await axios.post('http://localhost:8080/api-generator/api/api-doc/parse/text', textInput.value);
     parseResult.value = response.data;
+    // 添加实现说明
+    parseResult.value.implementationNotes = implementationNotes.value;
     ElMessage.success('解析成功');
   } catch (error) {
     console.error('解析文本接口文档失败:', error);
@@ -164,7 +175,8 @@ const parseTextDoc = async () => {
           ]
         }
       ],
-      databaseTables: []
+      databaseTables: [],
+      implementationNotes: implementationNotes.value
     };
     ElMessage.success('解析成功（使用模拟数据）');
   }

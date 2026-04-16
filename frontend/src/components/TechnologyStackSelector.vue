@@ -105,7 +105,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import axios from 'axios';
 import { ElMessage } from 'element-plus';
 
@@ -194,6 +194,13 @@ const fetchData = async () => {
 
 const selectCombo = (comboId) => {
   selectedCombo.value = comboId;
+  // 清空自定义选择
+  customSelection.value = {
+    backend: '',
+    database: '',
+    frontend: '',
+    server: ''
+  };
   const combo = combos.value.find(c => c.id === comboId);
   if (combo) {
     finalSelection.value = combo.technologyStacks;
@@ -236,6 +243,14 @@ const nextStep = () => {
 
 // 事件
 const emit = defineEmits(['next']);
+
+// 监听自定义选择变化
+watch(customSelection, (newValue) => {
+  // 如果自定义选择有任何值，取消预设套餐的选择
+  if (newValue.backend || newValue.database || newValue.frontend || newValue.server) {
+    selectedCombo.value = '';
+  }
+}, { deep: true });
 
 // 生命周期
 onMounted(() => {
