@@ -194,16 +194,23 @@ const fetchData = async () => {
 
 const selectCombo = (comboId) => {
   selectedCombo.value = comboId;
-  // 清空自定义选择
-  customSelection.value = {
-    backend: '',
-    database: '',
-    frontend: '',
-    server: ''
-  };
   const combo = combos.value.find(c => c.id === comboId);
   if (combo) {
     finalSelection.value = combo.technologyStacks;
+    // 同步更新自定义选择
+    combo.technologyStacks.forEach(tech => {
+      if (tech.category === 'backend') {
+        customSelection.value.backend = tech.id;
+      } else if (tech.category === 'database') {
+        customSelection.value.database = tech.id;
+      } else if (tech.category === 'frontend') {
+        customSelection.value.frontend = tech.id;
+      } else if (tech.category === 'server') {
+        customSelection.value.server = tech.id;
+      }
+    });
+    // 触发下一步事件，更新App.vue中的selectedTechStacks
+    emit('next', finalSelection.value);
   }
 };
 
@@ -227,6 +234,8 @@ const confirmCustomSelection = async () => {
     if (response.data) {
       finalSelection.value = selectedTechs;
       selectedCombo.value = '';
+      // 触发下一步事件，更新App.vue中的selectedTechStacks
+      emit('next', finalSelection.value);
     } else {
       ElMessage.error('所选技术栈不兼容');
     }
