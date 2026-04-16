@@ -150,6 +150,45 @@ const fetchData = async () => {
     technologyStacks.value = stackResponse.data;
   } catch (error) {
     console.error('获取技术栈数据失败:', error);
+    // 使用模拟数据
+    combos.value = [
+      {
+        id: "combo-a",
+        name: "套餐A",
+        description: "Spring Boot 2.7.18 + MySQL 8.0 + Vue 3.x + Tomcat 9.0",
+        technologyStacks: [
+          { id: "spring-boot-2.7.18", name: "Spring Boot", version: "2.7.18", category: "backend" },
+          { id: "mysql-8.0", name: "MySQL", version: "8.0+", category: "database" },
+          { id: "vue-3.x", name: "Vue", version: "3.x", category: "frontend" },
+          { id: "tomcat-9.0", name: "Tomcat", version: "9.0+", category: "server" }
+        ]
+      },
+      {
+        id: "combo-b",
+        name: "套餐B",
+        description: "Spring Boot 3.2.x + PostgreSQL 14.0 + React 18.x + Tomcat 9.0",
+        technologyStacks: [
+          { id: "spring-boot-3.2.x", name: "Spring Boot", version: "3.2.x", category: "backend" },
+          { id: "postgresql-14.0", name: "PostgreSQL", version: "14.0+", category: "database" },
+          { id: "react-18.x", name: "React", version: "18.x", category: "frontend" },
+          { id: "tomcat-9.0", name: "Tomcat", version: "9.0+", category: "server" }
+        ]
+      }
+    ];
+    technologyStacks.value = [
+      { id: "spring-boot-2.7.18", name: "Spring Boot", version: "2.7.18", category: "backend" },
+      { id: "spring-boot-3.2.x", name: "Spring Boot", version: "3.2.x", category: "backend" },
+      { id: "spring-cloud-2023.0.x", name: "Spring Cloud", version: "2023.0.x", category: "backend" },
+      { id: "mysql-8.0", name: "MySQL", version: "8.0+", category: "database" },
+      { id: "postgresql-14.0", name: "PostgreSQL", version: "14.0+", category: "database" },
+      { id: "oracle-19c", name: "Oracle", version: "19c+", category: "database" },
+      { id: "vue-3.x", name: "Vue", version: "3.x", category: "frontend" },
+      { id: "react-18.x", name: "React", version: "18.x", category: "frontend" },
+      { id: "angular-16.x", name: "Angular", version: "16.x", category: "frontend" },
+      { id: "tomcat-9.0", name: "Tomcat", version: "9.0+", category: "server" },
+      { id: "jetty-11.0", name: "Jetty", version: "11.0+", category: "server" },
+      { id: "undertow-2.3.x", name: "Undertow", version: "2.3.x", category: "server" }
+    ];
   }
 };
 

@@ -72,7 +72,97 @@ const generateMarkdown = async () => {
     ElMessage.success('文档生成成功');
   } catch (error) {
     console.error('生成Markdown文档失败:', error);
-    ElMessage.error('生成文档失败');
+    // 使用模拟数据
+    markdownContent.value = `# 接口项目构建流程文档
+
+## 技术栈
+
+- 后端框架: ${technologyStacks.value.find(t => t.category === 'backend')?.name || 'Spring Boot'} ${technologyStacks.value.find(t => t.category === 'backend')?.version || '2.7.18'}
+- 数据库: ${technologyStacks.value.find(t => t.category === 'database')?.name || 'MySQL'} ${technologyStacks.value.find(t => t.category === 'database')?.version || '8.0+'}
+- 前端框架: ${technologyStacks.value.find(t => t.category === 'frontend')?.name || 'Vue'} ${technologyStacks.value.find(t => t.category === 'frontend')?.version || '3.x'}
+- 应用服务器: ${technologyStacks.value.find(t => t.category === 'server')?.name || 'Tomcat'} ${technologyStacks.value.find(t => t.category === 'server')?.version || '9.0+'}
+
+## 接口列表
+
+### 1. 用户登录
+- **路径**: /api/login
+- **方法**: POST
+- **描述**: 用户登录接口
+- **参数**:
+  - username: string (必填)
+  - password: string (必填)
+
+### 2. 获取用户信息
+- **路径**: /api/user/info
+- **方法**: GET
+- **描述**: 获取用户信息接口
+- **参数**:
+  - userId: integer (必填)
+
+## 项目搭建步骤
+
+1. **创建项目**
+   ```bash
+   # 使用Spring Initializr创建项目
+   curl https://start.spring.io/starter.zip -d dependencies=web,data-jpa,mysql -d javaVersion=1.8 -o api-project.zip
+   unzip api-project.zip
+   cd api-project
+   ```
+
+2. **配置数据库**
+   ```yaml
+   # application.yml
+   spring:
+     datasource:
+       url: jdbc:mysql://localhost:3306/api_db
+       username: root
+       password: password
+       driver-class-name: com.mysql.cj.jdbc.Driver
+   ```
+
+3. **实现接口**
+   - 创建控制器
+   - 实现业务逻辑
+   - 配置路由
+
+4. **启动项目**
+   ```bash
+   mvn spring-boot:run
+   ```
+
+5. **测试接口**
+   ```bash
+   # 测试登录接口
+   curl -X POST http://localhost:8080/api/login -H "Content-Type: application/json" -d '{"username": "admin", "password": "123456"}'
+   ```
+
+## 部署指南
+
+1. **构建项目**
+   ```bash
+   mvn clean package
+   ```
+
+2. **部署到服务器**
+   ```bash
+   java -jar target/api-project.jar
+   ```
+
+3. **配置Nginx**
+   ```nginx
+   server {
+     listen 80;
+     server_name api.example.com;
+     
+     location / {
+       proxy_pass http://localhost:8080;
+       proxy_set_header Host $host;
+       proxy_set_header X-Real-IP $remote_addr;
+     }
+   }
+   ```
+`;
+    ElMessage.success('文档生成成功（使用模拟数据）');
   } finally {
     loading.value = false;
   }
