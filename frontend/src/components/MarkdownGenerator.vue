@@ -72,96 +72,12 @@ const generateMarkdown = async () => {
     ElMessage.success('文档生成成功');
   } catch (error) {
     console.error('生成Markdown文档失败:', error);
-    // 使用模拟数据
-    markdownContent.value = `# 接口项目构建流程文档
-
-## 技术栈
-
-- 后端框架: ${technologyStacks.value.find(t => t.category === 'backend')?.name || 'Spring Boot'} ${technologyStacks.value.find(t => t.category === 'backend')?.version || '2.7.18'}
-- 数据库: ${technologyStacks.value.find(t => t.category === 'database')?.name || 'MySQL'} ${technologyStacks.value.find(t => t.category === 'database')?.version || '8.0+'}
-- 前端框架: ${technologyStacks.value.find(t => t.category === 'frontend')?.name || 'Vue'} ${technologyStacks.value.find(t => t.category === 'frontend')?.version || '3.x'}
-- 应用服务器: ${technologyStacks.value.find(t => t.category === 'server')?.name || 'Tomcat'} ${technologyStacks.value.find(t => t.category === 'server')?.version || '9.0+'}
-
-## 接口列表
-
-### 1. 用户登录
-- **路径**: /api/login
-- **方法**: POST
-- **描述**: 用户登录接口
-- **参数**:
-  - username: string (必填)
-  - password: string (必填)
-
-### 2. 获取用户信息
-- **路径**: /api/user/info
-- **方法**: GET
-- **描述**: 获取用户信息接口
-- **参数**:
-  - userId: integer (必填)
-
-## 项目搭建步骤
-
-1. **创建项目**
-   ```bash
-   # 使用Spring Initializr创建项目
-   curl https://start.spring.io/starter.zip -d dependencies=web,data-jpa,mysql -d javaVersion=1.8 -o api-project.zip
-   unzip api-project.zip
-   cd api-project
-   ```
-
-2. **配置数据库**
-   ```yaml
-   # application.yml
-   spring:
-     datasource:
-       url: jdbc:mysql://localhost:3306/api_db
-       username: root
-       password: password
-       driver-class-name: com.mysql.cj.jdbc.Driver
-   ```
-
-3. **实现接口**
-   - 创建控制器
-   - 实现业务逻辑
-   - 配置路由
-
-4. **启动项目**
-   ```bash
-   mvn spring-boot:run
-   ```
-
-5. **测试接口**
-   ```bash
-   # 测试登录接口
-   curl -X POST http://localhost:8080/api/login -H "Content-Type: application/json" -d '{"username": "admin", "password": "123456"}'
-   ```
-
-## 部署指南
-
-1. **构建项目**
-   ```bash
-   mvn clean package
-   ```
-
-2. **部署到服务器**
-   ```bash
-   java -jar target/api-project.jar
-   ```
-
-3. **配置Nginx**
-   ```nginx
-   server {
-     listen 80;
-     server_name api.example.com;
-     
-     location / {
-       proxy_pass http://localhost:8080;
-       proxy_set_header Host $host;
-       proxy_set_header X-Real-IP $remote_addr;
-     }
-   }
-   ```
-`;
+    const backendTech = technologyStacks.value.find(t => t.category === 'backend') || { name: 'Spring Boot', version: '2.7.18' };
+    const databaseTech = technologyStacks.value.find(t => t.category === 'database') || { name: 'MySQL', version: '8.0+' };
+    const frontendTech = technologyStacks.value.find(t => t.category === 'frontend') || { name: 'Vue', version: '3.x' };
+    const serverTech = technologyStacks.value.find(t => t.category === 'server') || { name: 'Tomcat', version: '9.0+' };
+    
+    markdownContent.value = '# 接口项目构建流程文档\n\n## 技术栈\n\n- 后端框架: ' + backendTech.name + ' ' + backendTech.version + '\n- 数据库: ' + databaseTech.name + ' ' + databaseTech.version + '\n- 前端框架: ' + frontendTech.name + ' ' + frontendTech.version + '\n- 应用服务器: ' + serverTech.name + ' ' + serverTech.version + '\n\n## 接口列表\n\n### 1. 用户登录\n- **路径**: /api/login\n- **方法**: POST\n- **描述**: 用户登录接口\n- **参数**:\n  - username: string (必填)\n  - password: string (必填)\n\n### 2. 获取用户信息\n- **路径**: /api/user/info\n- **方法**: GET\n- **描述**: 获取用户信息接口\n- **参数**:\n  - userId: integer (必填)\n\n## 项目搭建步骤\n\n1. **创建项目**\n   ```bash\n   # 使用Spring Initializr创建项目\n   curl https://start.spring.io/starter.zip -d dependencies=web,data-jpa,mysql -d javaVersion=1.8 -o api-project.zip\n   unzip api-project.zip\n   cd api-project\n   ```\n\n2. **配置数据库**\n   ```yaml\n   # application.yml\n   spring:\n     datasource:\n       url: jdbc:mysql://localhost:3306/api_db\n       username: root\n       password: password\n       driver-class-name: com.mysql.cj.jdbc.Driver\n   ```\n\n3. **实现接口**\n   - 创建控制器\n   - 实现业务逻辑\n   - 配置路由\n\n4. **启动项目**\n   ```bash\n   mvn spring-boot:run\n   ```\n\n5. **测试接口**\n   ```bash\n   # 测试登录接口\n   curl -X POST http://localhost:8080/api/login -H "Content-Type: application/json" -d \'{\"username\": \"admin\", \"password\": \"123456\"}\'\n   ```\n\n## 部署指南\n\n1. **构建项目**\n   ```bash\n   mvn clean package\n   ```\n\n2. **部署到服务器**\n   ```bash\n   java -jar target/api-project.jar\n   ```\n\n3. **配置Nginx**\n   ```nginx\n   server {\n     listen 80;\n     server_name api.example.com;\n     \n     location / {\n       proxy_pass http://localhost:8080;\n       proxy_set_header Host $host;\n       proxy_set_header X-Real-IP $remote_addr;\n     }\n   }\n   ```';
     ElMessage.success('文档生成成功（使用模拟数据）');
   } finally {
     loading.value = false;
